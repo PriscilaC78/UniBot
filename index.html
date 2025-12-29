@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniBot - UNCAUS</title>
+    <style>
+        /* Estilos del globo flotante */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4; }
+        
+        .chat-widget {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+
+        .chat-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #004aad; /* Azul UNCAUS */
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.3s;
+        }
+
+        .chat-button:hover { transform: scale(1.1); }
+
+        /* Ventana del chat (oculta al principio) */
+        .chat-window {
+            display: none;
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 350px;
+            height: 500px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+
+        .chat-header {
+            background-color: #004aad;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        .close-btn { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background-color: #f9f9f9;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 10px 15px;
+            border-radius: 15px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .bot-message {
+            background-color: #e9ecef;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+
+        .user-message {
+            background-color: #004aad;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+
+        .chat-input-area {
+            padding: 10px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+            background: white;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        .send-btn {
+            background: #004aad;
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        /* Markdown simple */
+        .bot-message ul { padding-left: 20px; margin: 5px 0; }
+        .bot-message strong { font-weight: 600; }
+    </style>
+</head>
+<body>
+
+    <div class="chat-widget">
+        <div class="chat-window" id="chatWindow">
+            <div class="chat-header">
+                <span>🎓 UniBot Alumnado</span>
+                <button class="close-btn" onclick="toggleChat()">×</button>
+            </div>
+            <div class="chat-messages" id="messages">
+                <div class="message bot-message">¡Hola! Soy UniBot. ¿En qué trámite puedo ayudarte hoy?</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="userInput" placeholder="Escribe tu pregunta..." onkeypress="handleKeyPress(event)">
+                <button class="send-btn" onclick="sendMessage()">➤</button>
+            </div>
+        </div>
+
+        <button class="chat-button" onclick="toggleChat()">💬</button>
+    </div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000/chat"; // Tu servidor local
+
+        function toggleChat() {
+            const chatWindow = document.getElementById('chatWindow');
+            chatWindow.style.display = chatWindow.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') sendMessage();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const messageText = input.value.trim();
+            if (!messageText) return;
+
+            // 1. Mostrar mensaje del usuario
+            addMessage(messageText, 'user-message');
+            input.value = '';
+
+            // 2. Mostrar "Escribiendo..."
+            const loadingId = addMessage('Thinking...', 'bot-message');
+
+            try {
+                // 3. Enviar al Backend (Python)
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        pregunta: messageText,
+                        session_id: "web_user" 
+                    })
+                });
+
+                const data = await response.json();
+                
+                // 4. Reemplazar "Thinking..." con la respuesta real
+                const loadingMsg = document.getElementById(loadingId);
+                if (loadingMsg) loadingMsg.remove();
+                
+                // Formatear un poco el Markdown básico (negritas y listas)
+                let formattedText = data.respuesta
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Negritas
+                    .replace(/\n/g, '<br>'); // Saltos de línea
+
+                addMessage(formattedText, 'bot-message', true);
+
+            } catch (error) {
+                console.error("Error:", error);
+                addMessage("Lo siento, tuve un error de conexión. Asegúrate que el servidor Python esté corriendo.", 'bot-message');
+            }
+        }
+
+        function addMessage(text, className, isHTML = false) {
+            const messagesDiv = document.getElementById('messages');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${className}`;
+            msgDiv.id = 'msg-' + Date.now();
+            
+            if (isHTML) msgDiv.innerHTML = text;
+            else msgDiv.textContent = text;
+
+            messagesDiv.appendChild(msgDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight; // Auto-scroll
+            return msgDiv.id;
+        }
+    </script>
+</body>
+</html>

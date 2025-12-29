@@ -1,0 +1,11 @@
+# Archivos de entorno (CLAVES SECRETAS - ¡NO SUBIR!)
+.env
+
+# Carpetas pesadas o temporales de Python
+venv/
+__pycache__/
+*.pyc
+
+# Archivos de sistema o IDE
+.vscode/
+.DS_Store
