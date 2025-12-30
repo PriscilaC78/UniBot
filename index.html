@@ -6,7 +6,7 @@
     <title>Simulación Integración UNCAUS</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        /* --- ESTILOS GENERALES --- */
+        /* ESTILOS BÁSICOS */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Poppins', sans-serif; }
         
         iframe.background-site {
@@ -15,14 +15,6 @@
             border: none;
             position: absolute;
             z-index: 1;
-        }
-
-        /* --- WIDGET DE CHAT --- */
-        :root {
-            --chat-blue: #0f4c81; 
-            --chat-green: #8cc63f; 
-            --chat-bg: #f4f7f6;    
-            --input-bg: #f0f0f0;   
         }
 
         .unibot-widget-container {
@@ -36,13 +28,12 @@
             align-items: flex-end;
         }
 
-        /* Botón flotante */
         .unibot-toggle-btn {
             width: 70px;
             height: 70px;
             border-radius: 50%;
             background-color: white;
-            border: 3px solid var(--chat-green);
+            border: 3px solid #8cc63f;
             box-shadow: 0 4px 12px rgba(0,0,0,0.25);
             cursor: pointer;
             display: flex;
@@ -56,7 +47,6 @@
         .unibot-toggle-btn:hover { transform: scale(1.1); }
         .unibot-toggle-btn img { width: 100%; height: 100%; object-fit: cover; }
 
-        /* Ventana del chat */
         .unibot-window {
             display: none; 
             width: 350px;
@@ -68,16 +58,10 @@
             box-shadow: 0 5px 25px rgba(0,0,0,0.2);
             flex-direction: column;
             overflow: hidden;
-            animation: fadeIn 0.3s ease-in-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
         }
 
         .unibot-header {
-            background-color: var(--chat-blue);
+            background-color: #0f4c81;
             color: white;
             padding: 15px 20px;
             display: flex;
@@ -85,15 +69,15 @@
             align-items: center;
             font-weight: 600;
         }
-        .unibot-header-controls span {
-            margin-left: 15px;
-            cursor: pointer;
+        .unibot-header-controls span { 
+            cursor: pointer; 
+            margin-left: 10px; 
             font-size: 1.2rem;
             opacity: 0.8;
+            transition: opacity 0.2s;
         }
         .unibot-header-controls span:hover { opacity: 1; }
 
-        /* CUERPO DEL CHAT */
         .unibot-body {
             flex: 1;
             padding: 20px;
@@ -103,15 +87,13 @@
             flex-direction: column;
         }
 
-        /* --- CORRECCIÓN CLAVE AQUÍ --- */
         #messagesContainer {
             display: flex;
             flex-direction: column;
-            gap: 10px; /* Espacio entre mensajes */
-            flex: 1;   /* Ocupa el espacio disponible */
+            gap: 10px;
+            padding-bottom: 10px;
         }
 
-        /* Pantalla de Bienvenida */
         .welcome-screen {
             display: flex;
             flex-direction: column;
@@ -125,60 +107,21 @@
             width: 100px;
             height: 100px;
             border-radius: 50%;
-            border: 3px solid var(--chat-green);
+            border: 3px solid #8cc63f;
             padding: 5px;
             margin-bottom: 15px;
             background: white;
         }
         .robot-avatar-container img { width: 100%; height: 100%; object-fit: contain; }
-        .welcome-title { color: var(--chat-blue); font-size: 1.4rem; font-weight: 700; margin-bottom: 5px; }
-        .welcome-subtitle { color: #666; font-size: 0.95rem; }
-
-        /* Mensajes */
-        .chat-message {
-            max-width: 80%;
-            padding: 12px 16px;
-            border-radius: 18px;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            word-wrap: break-word;
-            animation: popIn 0.3s ease-out;
-        }
-        @keyframes popIn {
-            from { opacity: 0; transform: scale(0.9); }
-            to { opacity: 1; transform: scale(1); }
-        }
-
-        .bot-msg {
-            background-color: var(--chat-bg);
-            color: #333;
-            align-self: flex-start; /* Alineado a la izquierda */
-            border-bottom-left-radius: 2px;
-        }
-        .user-msg {
-            background-color: var(--chat-blue);
-            color: white;
-            align-self: flex-end; /* Alineado a la derecha */
-            border-bottom-right-radius: 2px;
-        }
-        .loading-msg { 
-            font-style: italic; color: #888; background: none; padding-left: 0; 
-            font-size: 0.8rem;
-            align-self: flex-start;
-        }
-
-        /* Estilos Markdown */
-        .bot-msg strong { color: var(--chat-blue); font-weight: 700; }
-        .bot-msg ul { padding-left: 20px; margin: 8px 0; }
-        .bot-msg li { margin-bottom: 4px; }
-
+        .welcome-title { color: #0f4c81; font-size: 1.4rem; font-weight: 700; }
+        
         .unibot-footer {
             padding: 15px;
             border-top: 1px solid #eee;
             background: white;
         }
         .input-container {
-            background-color: var(--input-bg);
+            background-color: #f0f0f0;
             border-radius: 30px;
             padding: 5px 5px 5px 20px;
             display: flex;
@@ -189,24 +132,20 @@
             border: none;
             background: none;
             outline: none;
-            font-family: 'Poppins', sans-serif;
             font-size: 0.95rem;
-            color: #333;
         }
         .send-btn {
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            background-color: var(--chat-green);
+            background-color: #8cc63f;
             border: none;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background 0.3s;
         }
-        .send-btn:hover { background-color: #7ab332; }
-        .send-btn svg { width: 18px; height: 18px; fill: white; margin-left: 2px; }
+        .send-btn svg { width: 18px; height: 18px; fill: white; }
     </style>
 </head>
 <body>
@@ -224,8 +163,9 @@
                     UniBot
                 </div>
                 <div class="unibot-header-controls">
-                    <span onclick="toggleChat()">&#9472;</span> 
-                    <span onclick="toggleChat()">&#10005;</span> 
+                    <span onclick="toggleChat()" title="Minimizar">&#9472;</span> 
+                    <span onclick="resetChat()" title="Reiniciar chat">&#x21bb;</span>
+                    <span onclick="toggleChat()" title="Cerrar">&#10005;</span> 
                 </div>
             </div>
             
@@ -235,7 +175,7 @@
                         <img src="robot..png" alt="UniBot Avatar">
                     </div>
                     <div class="welcome-title">¡Hola! Soy UniBot</div>
-                    <div class="welcome-subtitle">Estoy aquí para ayudarte con tus dudas académicas.</div>
+                    <div class="welcome-subtitle">Estoy aquí para ayudarte.</div>
                 </div>
                 <div id="messagesContainer"></div>
             </div>
@@ -274,6 +214,13 @@
             }
         }
 
+        function resetChat() {
+            messagesContainer.innerHTML = '';
+            welcomeScreen.style.display = 'flex';
+            isFirstMessage = true;
+            userInput.value = '';
+        }
+
         function handleKeyPress(event) {
             if (event.key === 'Enter') {
                 event.preventDefault();
@@ -284,7 +231,6 @@
         function formatMessage(text) {
             if (!text) return "";
             let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            
             const lines = formatted.split('\n');
             let inList = false;
             let resultHtml = "";
@@ -312,11 +258,10 @@
                 isFirstMessage = false;
             }
 
-            // Agregar mensaje del usuario
             addMessage(text, 'user-msg');
             userInput.value = '';
 
-            // Agregar indicador de escribiendo
+            // Guardamos el ID del mensaje "Escribiendo..."
             const loadingId = addMessage('Escribiendo...', 'loading-msg');
 
             try {
@@ -332,7 +277,7 @@
                 if (!response.ok) throw new Error("Error del servidor");
                 const data = await response.json();
 
-                // Borrar mensaje de "escribiendo"
+                // Ahora sí borraremos el mensaje CORRECTO
                 const loader = document.getElementById(loadingId);
                 if (loader) loader.remove();
 
@@ -349,18 +294,46 @@
 
         function addMessage(text, className, isHTML = false) {
             const msgDiv = document.createElement('div');
-            msgDiv.className = `chat-message ${className}`;
-            msgDiv.id = 'msg-' + Date.now();
             
+            // ESTILOS FORZADOS
+            msgDiv.style.padding = "10px 15px";
+            msgDiv.style.borderRadius = "15px";
+            msgDiv.style.maxWidth = "80%";
+            msgDiv.style.wordWrap = "break-word";
+            msgDiv.style.fontSize = "0.9rem";
+            msgDiv.style.marginBottom = "5px";
+            msgDiv.style.display = "block";
+
+            if (className === 'user-msg') {
+                msgDiv.style.backgroundColor = "#0f4c81"; 
+                msgDiv.style.color = "white";
+                msgDiv.style.alignSelf = "flex-end";     
+                msgDiv.style.marginLeft = "auto";        
+                msgDiv.style.borderBottomRightRadius = "2px";
+            } else if (className === 'bot-msg') {
+                msgDiv.style.backgroundColor = "#f4f7f6";
+                msgDiv.style.color = "#333";
+                msgDiv.style.alignSelf = "flex-start";   
+                msgDiv.style.marginRight = "auto";       
+                msgDiv.style.borderBottomLeftRadius = "2px";
+            } else if (className === 'loading-msg') {
+                msgDiv.style.color = "#888";
+                msgDiv.style.fontStyle = "italic";
+                msgDiv.style.fontSize = "0.8rem";
+            }
+
             if (isHTML) msgDiv.innerHTML = text;
             else msgDiv.textContent = text;
             
+            // --- CORRECCIÓN AQUÍ: ID ÚNICO ---
+            // Le agregamos un número aleatorio al final para que nunca se repita
+            msgDiv.id = 'msg-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            
             messagesContainer.appendChild(msgDiv);
             
-            // Scroll al fondo
             setTimeout(() => {
                 chatBody.scrollTop = chatBody.scrollHeight;
-            }, 50);
+            }, 10);
 
             return msgDiv.id;
         }

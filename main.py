@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# Configuración de permisos (CORS) para que funcione en cualquier web
+# Configuración de permisos (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,13 +19,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Conexión a Servicios (Supabase y Google)
+# 2. Conexión a Servicios
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 google_api_key = os.getenv("GOOGLE_API_KEY")
 
 if not supabase_url or not google_api_key:
-    raise ValueError("❌ Error: Faltan las variables de entorno en el archivo .env")
+    raise ValueError("❌ Error: Faltan las variables de entorno.")
 
 # Inicializamos clientes
 try:
@@ -34,15 +34,16 @@ try:
 except Exception as e:
     print(f"❌ Error al conectar servicios: {e}")
 
-# Modelo de datos que recibimos del usuario
+# Modelo de datos
 class UserQuery(BaseModel):
     pregunta: str
     session_id: str = "anonimo"
 
-# 3. Función para buscar información en tu PDF (Base de datos)
+# 3. Función para buscar información
 def buscar_contexto(pregunta_usuario: str):
     try:
-        # A. Convertimos la pregunta en números (Embedding)
+        # A. Embedding
+        # NOTA: Para embeddings, 'models/' suele ser necesario, pero para chat no.
         result = genai.embed_content(
             model="models/text-embedding-004", 
             content=pregunta_usuario,
@@ -50,20 +51,19 @@ def buscar_contexto(pregunta_usuario: str):
         )
         query_vector = result['embedding']
 
-        # B. Buscamos en Supabase los 3 fragmentos más parecidos
-        # Optimización: Bajamos match_count a 3 para más velocidad
+        # B. Búsqueda en Supabase
         response = supabase.rpc("match_documents", {
             "query_embedding": query_vector,
-            "match_threshold": 0.5, # Sensibilidad de búsqueda
-            "match_count": 3        # Traer menos texto para ser más rápido
+            "match_threshold": 0.4, # Lo bajé un poquito para que encuentre más cosas
+            "match_count": 3
         }).execute()
         
-        # C. Unimos los fragmentos en un solo texto
+        # C. Unir texto
         contexto = "\n\n".join([item['content'] for item in response.data])
         return contexto
         
     except Exception as e:
-        print(f"⚠️ Advertencia: No se pudo obtener contexto: {e}")
+        print(f"⚠️ Advertencia buscando contexto: {e}")
         return ""
 
 # 4. El Cerebro del Chat
@@ -71,25 +71,23 @@ def buscar_contexto(pregunta_usuario: str):
 async def chat_endpoint(query: UserQuery):
     print(f"📩 Pregunta recibida: {query.pregunta}")
 
-    # --- PASO RÁPIDO: DETECTOR DE SALUDOS ---
-    # Si saludan, respondemos directo sin buscar en la base de datos (Ahorra tiempo)
+    # --- DETECTOR DE SALUDOS ---
     saludos = ["hola", "buen dia", "buen día", "buenas", "que tal", "hello", "hi"]
     mensaje_usuario = query.pregunta.lower().strip()
     
-    # Si el mensaje contiene un saludo y es corto (menos de 20 letras)
     if any(s in mensaje_usuario for s in saludos) and len(mensaje_usuario) < 20:
         return {"respuesta": "¡Hola! 👋 Soy UniBot, el asistente virtual de Alumnado UNCAUS. ¿En qué trámite, fecha o requisito puedo ayudarte hoy?"}
-    # ----------------------------------------
+    # ---------------------------
 
-    # 1. Buscamos información en el PDF
+    # 1. Buscamos información
     contexto = buscar_contexto(query.pregunta)
     
-    # 2. Instrucciones para la Inteligencia Artificial
+    # 2. Instrucciones
     prompt = f"""
     Eres UniBot, el asistente virtual de la UNCAUS.
     Responde la pregunta del usuario basándote EXCLUSIVAMENTE en el siguiente contexto.
 
-    CONTEXTO RECUPERADO DE LA BASE DE DATOS:
+    CONTEXTO RECUPERADO:
     "{contexto}"
 
     ---
@@ -101,14 +99,24 @@ async def chat_endpoint(query: UserQuery):
 
     # 3. Generamos la respuesta con Gemini
     try:
-        model = genai.GenerativeModel('models/gemini-1.5-flash')
+        # --- AQUÍ ESTABA EL ERROR ---
+        # Cambiamos 'models/gemini-1.5-flash' por 'gemini-1.5-flash'
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
         response = model.generate_content(prompt)
         respuesta_final = response.text
     except Exception as e:
-        respuesta_final = "Lo siento, hubo un error técnico al procesar tu solicitud."
-        print(f"❌ Error Gemini: {e}")
+        # Si falla Flash, intentamos con Pro como respaldo
+        try:
+            print(f"⚠️ Falló Flash, intentando con Pro... Error: {e}")
+            model_backup = genai.GenerativeModel('gemini-pro')
+            response = model_backup.generate_content(prompt)
+            respuesta_final = response.text
+        except Exception as e2:
+            respuesta_final = "Lo siento, hubo un error técnico al conectar con la IA."
+            print(f"❌ Error Gemini Crítico: {e2}")
 
-    # 4. Guardamos la conversación (Sin bloquear si falla)
+    # 4. Guardamos log
     try:
         supabase.table("chat_logs").insert({
             "session_id": query.session_id,
@@ -116,11 +124,10 @@ async def chat_endpoint(query: UserQuery):
             "bot_response": respuesta_final
         }).execute()
     except Exception as e:
-        print(f"⚠️ No se pudo guardar el log (pero el bot respondió bien): {e}")
+        print(f"⚠️ No se pudo guardar el log: {e}")
 
     return {"respuesta": respuesta_final}
 
-# Endpoint de prueba para saber si el servidor está vivo
 @app.get("/")
 def home():
     return {"status": "UniBot está vivo y funcionando 🤖"}
