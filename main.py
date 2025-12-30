@@ -130,4 +130,4 @@ async def chat_endpoint(query: UserQuery):
 
 @app.get("/")
 def home():
-    return {"status": "UniBot está vivo y funcionando 🤖"}
+    return {"UniBot ACTUALIZADO v2 🚀"}
