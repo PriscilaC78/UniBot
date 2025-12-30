@@ -1,85 +1,84 @@
 import os
 import google.generativeai as genai
 from supabase import create_client, Client
+from langchain_community.document_loaders import PyPDFLoader
+# --- ESTA ES LA LÍNEA CORREGIDA (con guion bajo) ---
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
-from pypdf import PdfReader
 
-# 1. Cargar las credenciales del archivo .env
+# Cargar variables de entorno
 load_dotenv()
 
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_KEY")
-google_api_key = os.getenv("GOOGLE_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# 2. Configurar la IA y la Base de Datos
-genai.configure(api_key=google_api_key)
-supabase: Client = create_client(supabase_url, supabase_key)
+# Configurar clientes
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+genai.configure(api_key=GOOGLE_API_KEY)
 
-def extract_text_from_pdf(pdf_path):
-    """Lee el PDF y devuelve todo el texto como un string"""
-    print(f"📖 Leyendo el archivo: {pdf_path}...")
-    reader = PdfReader(pdf_path)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() + "\n"
-    return text
+def run_ingest():
+    print("🚀 Iniciando proceso de ingestión...")
 
-def split_text(text, chunk_size=800, overlap=100):
-    """
-    Corta el texto en pedazos de 800 caracteres con 100 de solapamiento.
-    El solapamiento ayuda a no cortar una frase importante a la mitad.
-    """
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end]
-        chunks.append(chunk)
-        start += chunk_size - overlap # Movemos la ventana dejando un poco del anterior
-    return chunks
+    # A. LIMPIEZA DE DATOS ANTIGUOS
+    print("🗑️  Borrando datos antiguos...")
+    try:
+        supabase.table("documents").delete().neq("id", 0).execute()
+    except Exception as e:
+        print(f"⚠️ Nota: No se pudo limpiar la tabla (quizás estaba vacía): {e}")
 
-def save_to_supabase(chunks):
-    """Genera el vector (IA) para cada pedazo y lo guarda en la BD"""
-    print(f"🧠 Procesando {len(chunks)} fragmentos de información...")
-    
-    total_guardados = 0
+    # B. CARGAR EL PDF
+    pdf_path = "faq.pdf" 
+    if not os.path.exists(pdf_path):
+        print(f"❌ Error: No encuentro el archivo '{pdf_path}'")
+        return
+
+    try:
+        loader = PyPDFLoader(pdf_path)
+        docs = loader.load()
+        print(f"📄 PDF cargado. Total de páginas: {len(docs)}")
+    except Exception as e:
+        print(f"❌ Error al leer el PDF: {e}")
+        return
+
+    # C. DIVIDIR EL TEXTO
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200
+    )
+    chunks = text_splitter.split_documents(docs)
+    print(f"🧩 Texto dividido en {len(chunks)} fragmentos.")
+
+    # D. GENERAR EMBEDDINGS Y SUBIR
+    print("🧠 Generando vectores y subiendo a Supabase... (Ignora las advertencias de Google)")
     
     for i, chunk in enumerate(chunks):
+        content = chunk.page_content
+        
         try:
-            # A. Generamos el 'Embedding' (la representación matemática del texto)
-            # Usamos el modelo 'text-embedding-004' que es compatible con las 768 dimensiones que definimos
-            result = genai.embed_content(
+            # Generar embedding
+            response = genai.embed_content(
                 model="models/text-embedding-004",
-                content=chunk,
+                content=content,
                 task_type="retrieval_document"
             )
-            
-            embedding = result['embedding']
+            embedding = response['embedding']
 
-            # B. Guardamos en Supabase
+            # Preparar y subir
             data = {
-                "content": chunk,
-                "embedding": embedding,
-                "metadata": {"source": "faq_alumnado.pdf"}
+                "content": content,
+                "metadata": chunk.metadata,
+                "embedding": embedding
             }
+            supabase.table("documents").insert(data).execute()
             
-            supabase.table("knowledge_base").insert(data).execute()
-            print(f"✅ Fragmento {i+1}/{len(chunks)} guardado.")
-            total_guardados += 1
-            
+            if i % 5 == 0:
+                print(f"   ... Procesado fragmento {i+1}/{len(chunks)}")
+                
         except Exception as e:
-            print(f"❌ Error en fragmento {i+1}: {e}")
+            print(f"⚠️ Error en el fragmento {i}: {e}")
 
-    print(f"\n🎉 ¡Listo! Se guardaron {total_guardados} fragmentos en la memoria de UniBot.")
+    print("✅ ¡Listo! La base de datos de UniBot ha sido actualizada.")
 
-# --- EJECUCIÓN DEL SCRIPT ---
 if __name__ == "__main__":
-    # Asegúrate de que el nombre del archivo coincida con el que pusiste en la carpeta
-    PDF_NAME = "faq.pdf" 
-    
-    if os.path.exists(PDF_NAME):
-        raw_text = extract_text_from_pdf(PDF_NAME)
-        text_chunks = split_text(raw_text)
-        save_to_supabase(text_chunks)
-    else:
-        print(f"⚠️ Error: No encuentro el archivo '{PDF_NAME}'. Asegúrate de ponerlo en la carpeta.")
+    run_ingest()
