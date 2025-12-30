@@ -10,38 +10,39 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# Configuración de permisos para que la web pueda hablar con el bot
+# Configuración de permisos (CORS) para que funcione en cualquier web
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # "*" significa que permite conexiones desde cualquier sitio
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Conexión a Servicios
+# 2. Conexión a Servicios (Supabase y Google)
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
 google_api_key = os.getenv("GOOGLE_API_KEY")
 
 if not supabase_url or not google_api_key:
-    raise ValueError("❌ Faltan las variables de entorno en el archivo .env")
+    raise ValueError("❌ Error: Faltan las variables de entorno en el archivo .env")
 
-supabase: Client = create_client(supabase_url, supabase_key)
-genai.configure(api_key=google_api_key)
+# Inicializamos clientes
+try:
+    supabase: Client = create_client(supabase_url, supabase_key)
+    genai.configure(api_key=google_api_key)
+except Exception as e:
+    print(f"❌ Error al conectar servicios: {e}")
 
-# Modelo de datos para recibir la pregunta
+# Modelo de datos que recibimos del usuario
 class UserQuery(BaseModel):
     pregunta: str
-    session_id: str = "anonimo" # Para identificar al usuario (opcional por ahora)
+    session_id: str = "anonimo"
 
+# 3. Función para buscar información en tu PDF (Base de datos)
 def buscar_contexto(pregunta_usuario: str):
-    """
-    1. Convierte la pregunta en vectores.
-    2. Busca en Supabase los fragmentos más parecidos.
-    """
     try:
-        # Generamos el embedding de la pregunta
+        # A. Convertimos la pregunta en números (Embedding)
         result = genai.embed_content(
             model="models/text-embedding-004", 
             content=pregunta_usuario,
@@ -49,51 +50,53 @@ def buscar_contexto(pregunta_usuario: str):
         )
         query_vector = result['embedding']
 
-        # Llamamos a la función 'match_documents' de Supabase
-        # IMPORTANTE: Baja el threshold a 0.4 o 0.5 para que sea más flexible
+        # B. Buscamos en Supabase los 3 fragmentos más parecidos
+        # Optimización: Bajamos match_count a 3 para más velocidad
         response = supabase.rpc("match_documents", {
             "query_embedding": query_vector,
-            "match_threshold": 0.5, 
-            "match_count": 5
+            "match_threshold": 0.5, # Sensibilidad de búsqueda
+            "match_count": 3        # Traer menos texto para ser más rápido
         }).execute()
         
-        # Unimos todos los fragmentos de texto encontrados en uno solo
+        # C. Unimos los fragmentos en un solo texto
         contexto = "\n\n".join([item['content'] for item in response.data])
         return contexto
         
     except Exception as e:
-        print(f"Error buscando contexto: {e}")
+        print(f"⚠️ Advertencia: No se pudo obtener contexto: {e}")
         return ""
 
+# 4. El Cerebro del Chat
 @app.post("/chat")
 async def chat_endpoint(query: UserQuery):
     print(f"📩 Pregunta recibida: {query.pregunta}")
 
-    # --- NUEVO: DETECTOR DE SALUDOS (Para que no falle nunca) ---
-    saludos = ["hola", "buen dia", "buen día", "buenas", "que tal", "hello"]
+    # --- PASO RÁPIDO: DETECTOR DE SALUDOS ---
+    # Si saludan, respondemos directo sin buscar en la base de datos (Ahorra tiempo)
+    saludos = ["hola", "buen dia", "buen día", "buenas", "que tal", "hello", "hi"]
     mensaje_usuario = query.pregunta.lower().strip()
     
-    # Si el usuario solo dice "hola" (o algo parecido), respondemos directo
+    # Si el mensaje contiene un saludo y es corto (menos de 20 letras)
     if any(s in mensaje_usuario for s in saludos) and len(mensaje_usuario) < 20:
         return {"respuesta": "¡Hola! 👋 Soy UniBot, el asistente virtual de Alumnado UNCAUS. ¿En qué trámite, fecha o requisito puedo ayudarte hoy?"}
-    # ------------------------------------------------------------
-    
-    # 1. Buscamos información relevante en la base de datos
+    # ----------------------------------------
+
+    # 1. Buscamos información en el PDF
     contexto = buscar_contexto(query.pregunta)
     
-    # 2. Armamos el Prompt para la IA
+    # 2. Instrucciones para la Inteligencia Artificial
     prompt = f"""
     Eres UniBot, el asistente virtual de la UNCAUS.
-    Tu tarea es responder preguntas basándote en el siguiente contexto obtenido de la base de datos.
+    Responde la pregunta del usuario basándote EXCLUSIVAMENTE en el siguiente contexto.
 
-    CONTEXTO RECUPERADO:
+    CONTEXTO RECUPERADO DE LA BASE DE DATOS:
     "{contexto}"
 
     ---
     INSTRUCCIONES:
-    1. Si la pregunta es sobre trámites, fechas o la universidad, RESPONDE ÚNICAMENTE usando la información del "CONTEXTO RECUPERADO".
-    2. Si la respuesta NO está en el contexto, di: "Lo siento, no tengo información sobre ese tema específico en mi base de conocimientos de Alumnado."
-    3. Sé amable, conciso y utiliza emojis.
+    1. Usa la información del CONTEXTO para responder.
+    2. Si la respuesta NO está en el contexto, di textualmente: "Lo siento, no tengo información sobre ese tema específico en mi base de conocimientos de Alumnado."
+    3. Sé amable, breve y usa emojis.
     """ 
 
     # 3. Generamos la respuesta con Gemini
@@ -102,10 +105,10 @@ async def chat_endpoint(query: UserQuery):
         response = model.generate_content(prompt)
         respuesta_final = response.text
     except Exception as e:
-        respuesta_final = "Lo siento, hubo un error al procesar tu solicitud con la IA."
-        print(f"Error Gemini: {e}")
+        respuesta_final = "Lo siento, hubo un error técnico al procesar tu solicitud."
+        print(f"❌ Error Gemini: {e}")
 
-    # 4. Guardamos el log
+    # 4. Guardamos la conversación (Sin bloquear si falla)
     try:
         supabase.table("chat_logs").insert({
             "session_id": query.session_id,
@@ -113,10 +116,11 @@ async def chat_endpoint(query: UserQuery):
             "bot_response": respuesta_final
         }).execute()
     except Exception as e:
-        print(f"No se pudo guardar el log: {e}")
+        print(f"⚠️ No se pudo guardar el log (pero el bot respondió bien): {e}")
 
     return {"respuesta": respuesta_final}
 
+# Endpoint de prueba para saber si el servidor está vivo
 @app.get("/")
 def home():
     return {"status": "UniBot está vivo y funcionando 🤖"}
