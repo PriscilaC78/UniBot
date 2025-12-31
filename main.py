@@ -40,7 +40,7 @@ class UserQuery(BaseModel):
 # 3. Función de búsqueda (Embeddings)
 def buscar_contexto(pregunta_usuario: str):
     try:
-        # IMPORTANTE: Para embeddings SÍ se usa 'models/'
+        # IMPORTANTE: Mantenemos el modelo de embeddings 004 que es universal
         result = genai.embed_content(
             model="models/text-embedding-004", 
             content=pregunta_usuario,
@@ -78,22 +78,24 @@ async def chat_endpoint(query: UserQuery):
     """ 
 
     try:
-        # Intentamos con Flash (versión estable)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # --- CAMBIO CRITICO: USAMOS EL MODELO QUE SÍ TIENES ---
+        # Tu cuenta tiene acceso a gemini-2.0-flash
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
         response = model.generate_content(prompt)
         respuesta_final = response.text
     except Exception as e:
-        print(f"⚠️ Falló Flash: {e}")
+        print(f"⚠️ Falló Gemini 2.0: {e}")
         try:
-            # RESPALDO: Usamos gemini-pro (el clásico) si falla Flash
-            model_backup = genai.GenerativeModel('gemini-pro')
+            # Si falla, intentamos con 'gemini-2.0-flash-lite' que también te sale en la lista
+            model_backup = genai.GenerativeModel('gemini-2.0-flash-lite')
             response = model_backup.generate_content(prompt)
             respuesta_final = response.text
         except Exception as e2:
-            respuesta_final = "Lo siento, hubo un error técnico al conectar con la IA. (Clave o Modelo inválido)"
+            respuesta_final = "Lo siento, hubo un error técnico. (Modelo no compatible)"
             print(f"❌ Error Gemini Crítico: {e2}")
 
-    # Guardar log (si falla no detiene el bot)
+    # Guardar log
     try:
         supabase.table("chat_logs").insert({
             "session_id": query.session_id,
@@ -105,19 +107,6 @@ async def chat_endpoint(query: UserQuery):
 
     return {"respuesta": respuesta_final}
 
-# --- HERRAMIENTA DE DIAGNÓSTICO (NUEVO) ---
-@app.get("/test-google")
-def test_google_connection():
-    """Prueba qué modelos ve realmente el servidor"""
-    status = {"api_key_detectada": bool(google_api_key), "modelos_disponibles": [], "error": None}
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                status["modelos_disponibles"].append(m.name)
-    except Exception as e:
-        status["error"] = str(e)
-    return status
-
 @app.get("/")
 def home():
-    return {"status": "UniBot v3.5 - MODO DIAGNOSTICO 🔧"}
+    return {"status": "UniBot v4.0 - MODELO 2.0 ACTIVADO 🚀"}
