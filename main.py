@@ -1,7 +1,7 @@
 import os
 from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 load_dotenv()
 app = FastAPI()
 
-# Configuración de permisos (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,10 +36,9 @@ class UserQuery(BaseModel):
     pregunta: str
     session_id: str = "anonimo"
 
-# 3. Función de búsqueda (Embeddings)
 def buscar_contexto(pregunta_usuario: str):
     try:
-        # IMPORTANTE: Mantenemos el modelo de embeddings 004 que es universal
+        # Modelo de embeddings estándar
         result = genai.embed_content(
             model="models/text-embedding-004", 
             content=pregunta_usuario,
@@ -60,14 +58,43 @@ def buscar_contexto(pregunta_usuario: str):
         print(f"⚠️ Error buscando contexto: {e}")
         return ""
 
-# 4. Chat Endpoint
+# --- NUEVA FUNCIÓN: PROBAR MÚLTIPLES MODELOS ---
+def generar_respuesta_inteligente(prompt):
+    # Lista de modelos sacada de tu diagnóstico (en orden de preferencia)
+    # Probamos con y sin el prefijo "models/" por seguridad
+    lista_modelos = [
+        "gemini-2.0-flash",           # La mejor opción
+        "gemini-2.0-flash-exp",       # Experimental (suele estar libre)
+        "gemini-flash-latest",        # El último estable genérico
+        "models/gemini-2.0-flash",    # Con prefijo por si acaso
+        "gemini-1.5-flash-latest"     # Respaldo antiguo confiable
+    ]
+
+    errores = []
+    
+    for nombre_modelo in lista_modelos:
+        try:
+            print(f"🔄 Intentando con modelo: {nombre_modelo}...")
+            model = genai.GenerativeModel(nombre_modelo)
+            response = model.generate_content(prompt)
+            print(f"✅ ¡Éxito con {nombre_modelo}!")
+            return response.text
+        except Exception as e:
+            print(f"❌ Falló {nombre_modelo}: {e}")
+            errores.append(str(e))
+            continue # Pasa al siguiente de la lista
+
+    # Si llegamos aquí, fallaron TODOS
+    print("💀 Todos los modelos fallaron.")
+    return f"Lo siento, hubo un error técnico. Detalles: {errores[-1]}"
+
 @app.post("/chat")
 async def chat_endpoint(query: UserQuery):
-    print(f"📩 Pregunta recibida: {query.pregunta}")
+    print(f"📩 Pregunta: {query.pregunta}")
 
     saludos = ["hola", "buen dia", "buenas", "que tal"]
     if any(s in query.pregunta.lower() for s in saludos) and len(query.pregunta) < 20:
-        return {"respuesta": "¡Hola! 👋 Soy UniBot. ¿En qué puedo ayudarte con Alumnado?"}
+        return {"respuesta": "¡Hola! 👋 Soy UniBot. ¿En qué puedo ayudarte?"}
 
     contexto = buscar_contexto(query.pregunta)
     
@@ -77,25 +104,9 @@ async def chat_endpoint(query: UserQuery):
     Si no está en el contexto, di que no sabes.
     """ 
 
-    try:
-        # --- CAMBIO CRITICO: USAMOS EL MODELO QUE SÍ TIENES ---
-        # Tu cuenta tiene acceso a gemini-2.0-flash
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
-        response = model.generate_content(prompt)
-        respuesta_final = response.text
-    except Exception as e:
-        print(f"⚠️ Falló Gemini 2.0: {e}")
-        try:
-            # Si falla, intentamos con 'gemini-2.0-flash-lite' que también te sale en la lista
-            model_backup = genai.GenerativeModel('gemini-2.0-flash-lite')
-            response = model_backup.generate_content(prompt)
-            respuesta_final = response.text
-        except Exception as e2:
-            respuesta_final = "Lo siento, hubo un error técnico. (Modelo no compatible)"
-            print(f"❌ Error Gemini Crítico: {e2}")
+    # Llamamos a la función "Todoterreno"
+    respuesta_final = generar_respuesta_inteligente(prompt)
 
-    # Guardar log
     try:
         supabase.table("chat_logs").insert({
             "session_id": query.session_id,
@@ -109,4 +120,4 @@ async def chat_endpoint(query: UserQuery):
 
 @app.get("/")
 def home():
-    return {"status": "UniBot v4.0 - MODELO 2.0 ACTIVADO 🚀"}
+    return {"status": "UniBot v5.0 - AUTO-SELECTOR DE MODELOS 🤖"}
